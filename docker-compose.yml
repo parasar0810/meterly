@@ -1,0 +1,17 @@
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: meterly_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: meterly_user
+      POSTGRES_PASSWORD: meterly_password
+      POSTGRES_DB: meterly_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - meterly_pgdata:/var/lib/postgresql/data
+
+volumes:
+  meterly_pgdata:
