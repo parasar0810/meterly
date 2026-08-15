@@ -10,19 +10,31 @@ public class AuthService : IAuthService
     private readonly IMeterlyDbContext _dbContext;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
+    private readonly FluentValidation.IValidator<RegisterRequest> _registerValidator;
 
     public AuthService(
         IMeterlyDbContext dbContext,
         IPasswordHasher passwordHasher,
-        IJwtTokenGenerator jwtTokenGenerator)
+        IJwtTokenGenerator jwtTokenGenerator,
+        FluentValidation.IValidator<RegisterRequest> registerValidator)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
         _jwtTokenGenerator = jwtTokenGenerator;
+        _registerValidator = registerValidator;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
     {
+        var validationResult = await _registerValidator.ValidateAsync(request, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(e => e.PropertyName, e => e.ErrorMessage)
+                .ToDictionary(g => g.Key, g => g.ToArray());
+            throw new ValidationException(errors);
+        }
+
         // 1. Check if user already exists across the whole system
         if (await _dbContext.Users.AnyAsync(u => u.Email == request.Email, cancellationToken))
         {
