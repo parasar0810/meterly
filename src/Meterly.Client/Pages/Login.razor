@@ -1,0 +1,100 @@
+@page "/login"
+@layout LoginLayout
+
+<PageTitle>Login - Meterly</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="d-flex align-center justify-center min-vh-100">
+    <MudPaper Elevation="4" Class="pa-8 w-100 rounded-xl" Style="max-width: 450px;">
+        <div class="d-flex flex-column align-center justify-center mb-6">
+            <MudIcon Icon="@Icons.Material.Filled.Power" Color="Color.Primary" Size="Size.Large" Class="mb-2" />
+            <MudText Typo="Typo.h4" Class="font-weight-bold" Color="Color.Primary">Meterly</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">Sign in to your account</MudText>
+        </div>
+
+        <EditForm Model="@_loginModel" OnValidSubmit="HandleLogin">
+            <DataAnnotationsValidator />
+            
+            <MudTextField @bind-Value="_loginModel.Email" 
+                          Label="Email Address" 
+                          Variant="Variant.Outlined" 
+                          Margin="Margin.Dense" 
+                          Class="mb-4" 
+                          For="@(() => _loginModel.Email)"
+                          InputType="InputType.Email"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Email" />
+                          
+            <MudTextField @bind-Value="_loginModel.Password" 
+                          Label="Password" 
+                          Variant="Variant.Outlined" 
+                          Margin="Margin.Dense" 
+                          Class="mb-6" 
+                          For="@(() => _loginModel.Password)"
+                          InputType="@_passwordInput"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@_passwordInputIcon"
+                          OnAdornmentClick="TogglePasswordVisibility"
+                          AdornmentAriaLabel="Show Password" />
+
+            <MudButton ButtonType="ButtonType.Submit" 
+                       Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       Size="Size.Large" 
+                       FullWidth="true" 
+                       Class="mb-4 py-3 rounded-lg font-weight-bold"
+                       Disabled="@_isLoading">
+                @if (_isLoading)
+                {
+                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                    <MudText Class="ms-2">Signing in...</MudText>
+                }
+                else
+                {
+                    <MudText>Sign In</MudText>
+                }
+            </MudButton>
+        </EditForm>
+
+        <div class="d-flex justify-center mt-2">
+            <MudLink Href="/register" Color="Color.Primary" Typo="Typo.body2">Don't have an account? Sign up</MudLink>
+        </div>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private LoginModel _loginModel = new();
+    private bool _isLoading = false;
+    private bool _isShowPassword;
+    private InputType _passwordInput = InputType.Password;
+    private string _passwordInputIcon = Icons.Material.Filled.VisibilityOff;
+
+    private void TogglePasswordVisibility()
+    {
+        if (_isShowPassword)
+        {
+            _isShowPassword = false;
+            _passwordInputIcon = Icons.Material.Filled.VisibilityOff;
+            _passwordInput = InputType.Password;
+        }
+        else
+        {
+            _isShowPassword = true;
+            _passwordInputIcon = Icons.Material.Filled.Visibility;
+            _passwordInput = InputType.Text;
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        _isLoading = true;
+        // Simulate API call delay
+        await Task.Delay(1000);
+        _isLoading = false;
+    }
+
+    public class LoginModel
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+}

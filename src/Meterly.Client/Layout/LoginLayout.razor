@@ -1,0 +1,25 @@
+@inherits LayoutComponentBase
+
+<MudThemeProvider Theme="_currentTheme" />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudMainContent Class="bg-light-gray min-vh-100">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private MudTheme _currentTheme = new MudTheme()
+    {
+        PaletteLight = new PaletteLight()
+        {
+            Primary = "#4f46e5", // Indigo/Blue premium color
+            AppbarBackground = "#ffffff",
+            Background = "#f8fafc",
+            TextPrimary = "#1e293b",
+            TextSecondary = "#64748b"
+        }
+    };
+}

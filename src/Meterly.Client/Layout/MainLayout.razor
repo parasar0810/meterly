@@ -1,0 +1,49 @@
+@inherits LayoutComponentBase
+
+<MudThemeProvider Theme="_currentTheme" />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1" Color="Color.Surface" Fixed="true">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+        <MudText Typo="Typo.h5" Class="ml-3 font-weight-bold" Color="Color.Primary">Meterly</MudText>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" />
+        <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Class="ml-4">A</MudAvatar>
+    </MudAppBar>
+    
+    <MudDrawer @bind-Open="_drawerOpen" Elevation="1" ClipMode="DrawerClipMode.Docked">
+        <NavMenu />
+    </MudDrawer>
+    
+    <MudMainContent Class="bg-light-gray min-vh-100 pt-16">
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-8 pt-4">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    bool _drawerOpen = true;
+
+    void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    private MudTheme _currentTheme = new MudTheme()
+    {
+        PaletteLight = new PaletteLight()
+        {
+            Primary = "#4f46e5", // Indigo/Blue premium color
+            AppbarBackground = "#ffffff",
+            Background = "#f8fafc",
+            DrawerBackground = "#ffffff",
+            TextPrimary = "#1e293b",
+            TextSecondary = "#64748b",
+            ActionDefault = "#94a3b8",
+            ActionDisabled = "#cbd5e1"
+        }
+    };
+}
