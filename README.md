@@ -90,7 +90,7 @@ curl http://localhost:5000/api/health/error-test?type=notfound
 - [ ] **Phase 10:** Double-entry ledger
 - [ ] **Phase 11:** Refunds + credits
 - [x] **Phase 12:** Dunning + Hangfire
-- [ ] **Phase 13:** Testing
+- [x] **Phase 13:** Testing
 - [ ] **Phase 14:** Docker
 - [ ] **Phase 15:** Documentation + cleanup
 
@@ -143,6 +143,15 @@ A: Hangfire creates jobs as singletons, but DbContext is Scoped (per request). I
 
 **Q: Why bypass the global tenant query filter in DunningJob?**
 A: The global filter reads TenantId from ICurrentUserService, which reads from HttpContext. Hangfire jobs run outside HTTP requests — there's no HttpContext. We use `.IgnoreQueryFilters()` and handle tenant scoping manually by querying across all tenants in a single sweep.
+
+**Q: Why don't you use a real PostgreSQL database in the integration tests?**
+A: Requiring a real database makes tests flaky and hard to run in CI/CD environments. By replacing PostgreSQL with EF Core InMemory Database inside `WebApplicationFactory`, the tests run instantly entirely in memory, but still test the full ASP.NET Core request pipeline, middleware, MediatR, and controllers. We reserve real DB tests for end-to-end smoke tests.
+
+**Q: In your PayInvoice tests, why do you mock IPaymentGateway but not the database?**
+A: `IPaymentGateway` represents an external system boundary (e.g., Stripe) which we don't control. Calling it would cost real money and fail without network. The database, however, is controlled by our code. Using EF Core InMemory lets us verify that our EF queries and state changes work correctly without mocking every `DbSet`, which is an anti-pattern.
+
+**Q: How do you test the dunning schedule without a database or background jobs running?**
+A: We extracted the schedule logic into a pure domain function (`ShouldRetryNow`). Pure unit tests can pass in different mock `DateTime` values and attempt counts to verify the business rule (e.g., attempt 4 must wait 7 days) without needing Hangfire or SQL at all.
 
 </details>
 
