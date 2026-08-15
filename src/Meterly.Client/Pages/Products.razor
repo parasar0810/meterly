@@ -1,0 +1,132 @@
+@page "/products"
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Products - Meterly</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-6">
+    <div>
+        <MudText Typo="Typo.h4" Style="font-weight: 700; color: #1c1c1c;">Products</MudText>
+        <MudText Typo="Typo.body2" Style="color: #6b7280;">Manage your catalog of products and services</MudText>
+    </div>
+    <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Inventory2"
+               Style="background-color: #D4AF37; color: white; border-radius: 8px; text-transform: none;"
+               OnClick="OpenAddProductDialog">
+        Add Product
+    </MudButton>
+</div>
+
+@if (_isLoading)
+{
+    <div class="d-flex justify-center py-12">
+        <MudProgressCircular Indeterminate="true" Color="Color.Secondary" />
+    </div>
+}
+else if (_products.Count == 0)
+{
+    <MudPaper Elevation="0" Class="premium-card d-flex flex-column align-center justify-center py-12">
+        <MudIcon Icon="@Icons.Material.Filled.Category" Style="font-size: 80px; color: #ccc;" Class="mb-4" />
+        <MudText Typo="Typo.h6" Style="color: #6b7280;">No products yet</MudText>
+        <MudText Typo="Typo.body2" Style="color: #aaa;" Class="mb-4">Add your first product to your catalog.</MudText>
+        <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add"
+                   Style="background-color: #D4AF37; color: white; border-radius: 8px; text-transform: none;"
+                   OnClick="OpenAddProductDialog">
+            Add First Product
+        </MudButton>
+    </MudPaper>
+}
+else
+{
+    <MudPaper Elevation="0" Class="premium-card">
+        <MudTable Items="@_products" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name" Style="font-weight: 500;">@context.Name</MudTd>
+                <MudTd DataLabel="Description">@(string.IsNullOrEmpty(context.Description) ? "-" : context.Description)</MudTd>
+                <MudTd DataLabel="Status">
+                    @if (context.IsActive)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">Active</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Text">Inactive</MudChip>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private bool _isLoading = true;
+    private List<ProductViewModel> _products = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            NavigationManager.NavigateTo("/login");
+            return;
+        }
+
+        await SetAuthHeader();
+        await LoadProducts();
+    }
+
+    private async Task SetAuthHeader()
+    {
+        var token = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "jwt_token");
+        if (!string.IsNullOrEmpty(token))
+        {
+            Http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        }
+    }
+
+    private async Task LoadProducts()
+    {
+        _isLoading = true;
+        try
+        {
+            // API mockup:
+        }
+        catch { }
+        _isLoading = false;
+    }
+
+    private async Task OpenAddProductDialog()
+    {
+        var parameters = new DialogParameters();
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AddProductDialog>("Add Product", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is ProductViewModel newProduct)
+        {
+            _products.Add(newProduct);
+            Snackbar.Add($"Product '{newProduct.Name}' created!", Severity.Success);
+        }
+    }
+
+    public class ProductViewModel
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+}

@@ -31,7 +31,11 @@ namespace Meterly.UnitTests.Invoices;
 /// </summary>
 public class PayInvoiceCommandHandlerTests
 {
-    private MeterlyDbContext CreateDbContext()
+    /// <summary>
+    /// Creates an InMemory DbContext where the mocked CurrentUserService TenantId
+    /// matches the supplied tenantId — satisfying the global query filter on Invoice.
+    /// </summary>
+    private (MeterlyDbContext db, Guid tenantId) CreateDbContext()
     {
         var tenantId = Guid.NewGuid();
 
@@ -40,24 +44,30 @@ public class PayInvoiceCommandHandlerTests
         services.AddDbContext<MeterlyDbContext>(opts =>
             opts.UseInMemoryDatabase(Guid.NewGuid().ToString()));
 
-        // Mock ICurrentUserService to always return our test tenant
+        // *** KEY FIX: the mock returns the SAME tenantId we will seed data with,
+        //     so the global EF Core query filter (i.TenantId == currentUser.TenantId)
+        //     is satisfied and the invoice is visible to the handler.
         var mockCurrentUser = new Mock<ICurrentUserService>();
         mockCurrentUser.Setup(s => s.TenantId).Returns(tenantId);
         mockCurrentUser.Setup(s => s.UserId).Returns(Guid.NewGuid());
         services.AddSingleton(mockCurrentUser.Object);
 
         var sp = services.BuildServiceProvider();
-        return sp.GetRequiredService<MeterlyDbContext>();
+        return (sp.GetRequiredService<MeterlyDbContext>(), tenantId);
     }
 
-    private (Invoice invoice, Tenant tenant) SeedPaidInvoice(MeterlyDbContext db)
+    /// <summary>
+    /// Seeds a Tenant and an Open Invoice that share the same TenantId.
+    /// </summary>
+    private (Invoice invoice, Tenant tenant) SeedInvoice(MeterlyDbContext db, Guid tenantId)
     {
-        var tenant = new Tenant { Name = "Test Corp" };
+        // Use the provided tenantId — NOT a new Guid — so the global query filter matches.
+        var tenant = new Tenant { Id = tenantId, Name = "Test Corp" };
         db.Tenants.Add(tenant);
 
         var invoice = new Invoice
         {
-            TenantId = tenant.Id,
+            TenantId = tenantId,
             Number = "INV-0001",
             Status = InvoiceStatus.Open,
             Currency = "USD",
@@ -74,8 +84,8 @@ public class PayInvoiceCommandHandlerTests
     public async Task Handle_WhenSameIdempotencyKeySubmittedTwice_ReturnsSameResultWithoutDoubleCharge()
     {
         // Arrange
-        var db = CreateDbContext();
-        var (invoice, tenant) = SeedPaidInvoice(db);
+        var (db, tenantId) = CreateDbContext();
+        var (invoice, tenant) = SeedInvoice(db, tenantId);
 
         var idempotencyKey = "test-idempotency-key-001";
 
@@ -83,7 +93,7 @@ public class PayInvoiceCommandHandlerTests
         // (simulating a previous call that already completed)
         var existingPayment = new Payment
         {
-            TenantId = tenant.Id,
+            TenantId = tenantId,
             InvoiceId = invoice.Id,
             Amount = 100m,
             Currency = "USD",
@@ -96,7 +106,7 @@ public class PayInvoiceCommandHandlerTests
 
         var mockGateway = new Mock<IPaymentGateway>();
         var mockCurrentUser = new Mock<ICurrentUserService>();
-        mockCurrentUser.Setup(s => s.TenantId).Returns(tenant.Id);
+        mockCurrentUser.Setup(s => s.TenantId).Returns(tenantId);
         var mockWebhook = new Mock<IWebhookDispatcher>();
         var mockLedger = new Mock<ILedgerService>();
 
@@ -121,8 +131,8 @@ public class PayInvoiceCommandHandlerTests
     public async Task Handle_WhenGatewaySucceeds_MarksInvoicePaidAndCreatesPayment()
     {
         // Arrange
-        var db = CreateDbContext();
-        var (invoice, tenant) = SeedPaidInvoice(db);
+        var (db, tenantId) = CreateDbContext();
+        var (invoice, tenant) = SeedInvoice(db, tenantId);
 
         var mockGateway = new Mock<IPaymentGateway>();
         mockGateway
@@ -130,7 +140,7 @@ public class PayInvoiceCommandHandlerTests
             .ReturnsAsync(new PaymentResult(true, "gw-ref-abc", null));
 
         var mockCurrentUser = new Mock<ICurrentUserService>();
-        mockCurrentUser.Setup(s => s.TenantId).Returns(tenant.Id);
+        mockCurrentUser.Setup(s => s.TenantId).Returns(tenantId);
         var mockWebhook = new Mock<IWebhookDispatcher>();
         var mockLedger = new Mock<ILedgerService>();
 
@@ -153,15 +163,15 @@ public class PayInvoiceCommandHandlerTests
         payment.Status.Should().Be(PaymentStatus.Succeeded);
 
         // Ledger entries should have been posted
-        mockLedger.Verify(l => l.PostPaymentEntriesAsync(tenant.Id, It.IsAny<Invoice>(), It.IsAny<Payment>(), It.IsAny<CancellationToken>()), Times.Once);
+        mockLedger.Verify(l => l.PostPaymentEntriesAsync(tenantId, It.IsAny<Invoice>(), It.IsAny<Payment>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task Handle_WhenGatewayFails_LeavesInvoiceOpenAndRecordsFailedPayment()
     {
         // Arrange
-        var db = CreateDbContext();
-        var (invoice, tenant) = SeedPaidInvoice(db);
+        var (db, tenantId) = CreateDbContext();
+        var (invoice, tenant) = SeedInvoice(db, tenantId);
 
         var mockGateway = new Mock<IPaymentGateway>();
         mockGateway
@@ -169,7 +179,7 @@ public class PayInvoiceCommandHandlerTests
             .ReturnsAsync(new PaymentResult(false, null, "Insufficient funds"));
 
         var mockCurrentUser = new Mock<ICurrentUserService>();
-        mockCurrentUser.Setup(s => s.TenantId).Returns(tenant.Id);
+        mockCurrentUser.Setup(s => s.TenantId).Returns(tenantId);
         var mockWebhook = new Mock<IWebhookDispatcher>();
         var mockLedger = new Mock<ILedgerService>();
 
@@ -197,8 +207,8 @@ public class PayInvoiceCommandHandlerTests
     public async Task Handle_WhenInvoiceAlreadyPaid_ThrowsBusinessRuleException()
     {
         // Arrange
-        var db = CreateDbContext();
-        var (invoice, tenant) = SeedPaidInvoice(db);
+        var (db, tenantId) = CreateDbContext();
+        var (invoice, tenant) = SeedInvoice(db, tenantId);
 
         // Mark invoice as already paid (via a different payment path)
         invoice.Status = InvoiceStatus.Paid;
@@ -206,7 +216,7 @@ public class PayInvoiceCommandHandlerTests
 
         var mockGateway = new Mock<IPaymentGateway>();
         var mockCurrentUser = new Mock<ICurrentUserService>();
-        mockCurrentUser.Setup(s => s.TenantId).Returns(tenant.Id);
+        mockCurrentUser.Setup(s => s.TenantId).Returns(tenantId);
         var mockWebhook = new Mock<IWebhookDispatcher>();
         var mockLedger = new Mock<ILedgerService>();
 

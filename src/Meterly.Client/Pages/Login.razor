@@ -1,5 +1,10 @@
 @page "/login"
 @layout LoginLayout
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Login - Meterly</PageTitle>
 
@@ -10,6 +15,11 @@
             <MudText Typo="Typo.h4" Class="font-weight-bold" Color="Color.Primary">Meterly</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">Sign in to your account</MudText>
         </div>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true" CloseIconClicked="() => _errorMessage = string.Empty">@_errorMessage</MudAlert>
+        }
 
         <EditForm Model="@_loginModel" OnValidSubmit="HandleLogin">
             <DataAnnotationsValidator />
@@ -67,6 +77,17 @@
     private bool _isShowPassword;
     private InputType _passwordInput = InputType.Password;
     private string _passwordInputIcon = Icons.Material.Filled.VisibilityOff;
+    private string _errorMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // If user is already authenticated, redirect to dashboard
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            NavigationManager.NavigateTo("/");
+        }
+    }
 
     private void TogglePasswordVisibility()
     {
@@ -87,14 +108,69 @@
     private async Task HandleLogin()
     {
         _isLoading = true;
-        // Simulate API call delay
-        await Task.Delay(1000);
-        _isLoading = false;
+        _errorMessage = string.Empty;
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("/api/auth/login", new
+            {
+                Email = _loginModel.Email,
+                Password = _loginModel.Password
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                var authResult = await response.Content.ReadFromJsonAsync<AuthResponse>();
+                if (authResult != null && !string.IsNullOrEmpty(authResult.Token))
+                {
+                    // Save token to localStorage
+                    await JSRuntime.InvokeVoidAsync("localStorage.setItem", "jwt_token", authResult.Token);
+                    await JSRuntime.InvokeVoidAsync("localStorage.setItem", "user_email", authResult.Email);
+                    await JSRuntime.InvokeVoidAsync("localStorage.setItem", "user_name", authResult.FullName);
+
+                    // Notify auth state changed
+                    ((CustomAuthStateProvider)AuthStateProvider).NotifyUserAuthentication(authResult.Token);
+
+                    Snackbar.Add($"Welcome back, {authResult.FullName}!", Severity.Success);
+                    NavigationManager.NavigateTo("/", forceLoad: true);
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _errorMessage = "Invalid email or password. Please try again.";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _errorMessage = "Cannot reach the server. Please make sure the API is running.";
+        }
+        catch (Exception)
+        {
+            _errorMessage = "An unexpected error occurred. Please try again.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
     }
 
     public class LoginModel
     {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Email is required")]
+        [System.ComponentModel.DataAnnotations.EmailAddress(ErrorMessage = "Enter a valid email address")]
         public string Email { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Password is required")]
         public string Password { get; set; } = string.Empty;
+    }
+
+    public class AuthResponse
+    {
+        public string Token { get; set; } = string.Empty;
+        public Guid UserId { get; set; }
+        public Guid TenantId { get; set; }
+        public string Email { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
     }
 }

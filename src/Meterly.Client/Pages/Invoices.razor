@@ -1,0 +1,169 @@
+@page "/invoices"
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Invoices - Meterly</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-6">
+    <div>
+        <MudText Typo="Typo.h4" Style="font-weight: 700; color: #1c1c1c;">Invoices</MudText>
+        <MudText Typo="Typo.body2" Style="color: #6b7280;">Manage and track your invoices</MudText>
+    </div>
+    <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.NoteAdd"
+               Style="background-color: #1565C0; color: white; border-radius: 8px; text-transform: none;"
+               OnClick="OpenAddInvoiceDialog">
+        Create Invoice
+    </MudButton>
+</div>
+
+@if (_isLoading)
+{
+    <div class="d-flex justify-center py-12">
+        <MudProgressCircular Indeterminate="true" Color="Color.Secondary" />
+    </div>
+}
+else if (_invoices.Count == 0)
+{
+    <MudPaper Elevation="0" Class="premium-card d-flex flex-column align-center justify-center py-12">
+        <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Style="font-size: 80px; color: #ccc;" Class="mb-4" />
+        <MudText Typo="Typo.h6" Style="color: #6b7280;">No invoices found</MudText>
+        <MudText Typo="Typo.body2" Style="color: #aaa;" Class="mb-4">Create your first invoice to get paid.</MudText>
+        <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.NoteAdd"
+                   Style="background-color: #1565C0; color: white; border-radius: 8px; text-transform: none;"
+                   OnClick="OpenAddInvoiceDialog">
+            Create First Invoice
+        </MudButton>
+    </MudPaper>
+}
+else
+{
+    <MudPaper Elevation="0" Class="premium-card">
+        <MudTable Items="@_invoices" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Customer</MudTh>
+                <MudTh>Amount</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Due Date</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Customer">@context.CustomerName</MudTd>
+                <MudTd DataLabel="Amount">@context.Amount.ToString("C")</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)" Variant="Variant.Filled">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Due Date">@context.DueDate.ToString("MMM dd, yyyy")</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Payment" Size="Size.Small" Color="Color.Success"
+                                   OnClick="@(() => PayInvoice(context))" Disabled="@(context.Status == "Paid")" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" 
+                                   OnClick="@(() => ViewInvoice(context.Id))" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private bool _isLoading = true;
+    private List<InvoiceViewModel> _invoices = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            NavigationManager.NavigateTo("/login");
+            return;
+        }
+
+        await SetAuthHeader();
+        await LoadInvoices();
+    }
+
+    private async Task SetAuthHeader()
+    {
+        var token = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "jwt_token");
+        if (!string.IsNullOrEmpty(token))
+        {
+            Http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        }
+    }
+
+    private async Task LoadInvoices()
+    {
+        _isLoading = true;
+        try
+        {
+            // Similar to customers, we don't have a list all invoices endpoint right now (only by customerId),
+            // so we will start empty
+        }
+        catch { }
+        _isLoading = false;
+    }
+
+    private async Task OpenAddInvoiceDialog()
+    {
+        var parameters = new DialogParameters();
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AddInvoiceDialog>("Create Invoice", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is InvoiceViewModel newInvoice)
+        {
+            _invoices.Add(newInvoice);
+            Snackbar.Add("Invoice created successfully!", Severity.Success);
+        }
+    }
+
+    private async Task PayInvoice(InvoiceViewModel invoice)
+    {
+        try
+        {
+            var response = await Http.PostAsync($"/api/invoices/{invoice.Id}/pay", null);
+            if (response.IsSuccessStatusCode)
+            {
+                invoice.Status = "Paid";
+                Snackbar.Add("Invoice paid successfully!", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to pay invoice.", Severity.Error);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Error communicating with server.", Severity.Error);
+        }
+    }
+
+    private void ViewInvoice(Guid id)
+    {
+        Snackbar.Add("Invoice details view coming soon!", Severity.Info);
+    }
+
+    private Color GetStatusColor(string status) => status switch
+    {
+        "Paid" => Color.Success,
+        "Draft" => Color.Default,
+        "Sent" => Color.Info,
+        "Overdue" => Color.Error,
+        _ => Color.Default
+    };
+
+    public class InvoiceViewModel
+    {
+        public Guid Id { get; set; }
+        public string CustomerName { get; set; } = "";
+        public decimal Amount { get; set; }
+        public string Status { get; set; } = "";
+        public DateTime DueDate { get; set; }
+    }
+}

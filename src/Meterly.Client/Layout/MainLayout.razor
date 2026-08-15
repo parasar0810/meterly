@@ -1,49 +1,110 @@
 @inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
 
 <MudThemeProvider Theme="_currentTheme" />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
-<MudLayout>
-    <MudAppBar Elevation="1" Color="Color.Surface" Fixed="true">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
-        <MudText Typo="Typo.h5" Class="ml-3 font-weight-bold" Color="Color.Primary">Meterly</MudText>
+<div class="d-flex" style="background-color: #EFECE5; min-height: 100vh; overflow: hidden;">
+    <!-- Floating Sidebar -->
+    <div class="floating-sidebar d-flex flex-column align-center py-6">
+        <MudIconButton Icon="@Icons.Material.Filled.Stream" Style="color: #637A68; font-size: 32px;" Class="mb-8" OnClick="@(() => NavigationManager.NavigateTo("/"))" />
+        
+        <MudTooltip Text="Dashboard" Placement="Placement.Right">
+            <MudIconButton Icon="@Icons.Material.Filled.Dashboard" 
+                           Style="@GetSidebarStyle("/")" 
+                           OnClick="@(() => NavigateTo("/"))" />
+        </MudTooltip>
+        <MudTooltip Text="Invoices" Placement="Placement.Right">
+            <MudIconButton Icon="@Icons.Material.Filled.Receipt" 
+                           Style="@GetSidebarStyle("/invoices")" 
+                           OnClick="@(() => NavigateTo("/invoices"))" />
+        </MudTooltip>
+        <MudTooltip Text="Customers" Placement="Placement.Right">
+            <MudIconButton Icon="@Icons.Material.Filled.People" 
+                           Style="@GetSidebarStyle("/customers")" 
+                           OnClick="@(() => NavigateTo("/customers"))" />
+        </MudTooltip>
+        <MudTooltip Text="Products" Placement="Placement.Right">
+            <MudIconButton Icon="@Icons.Material.Filled.Inventory2" 
+                           Style="@GetSidebarStyle("/products")" 
+                           OnClick="@(() => NavigateTo("/products"))" />
+        </MudTooltip>
+        
         <MudSpacer />
-        <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" />
-        <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Class="ml-4">A</MudAvatar>
-    </MudAppBar>
-    
-    <MudDrawer @bind-Open="_drawerOpen" Elevation="1" ClipMode="DrawerClipMode.Docked">
-        <NavMenu />
-    </MudDrawer>
-    
-    <MudMainContent Class="bg-light-gray min-vh-100 pt-16">
-        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-8 pt-4">
-            @Body
-        </MudContainer>
-    </MudMainContent>
-</MudLayout>
+        
+        <MudTooltip Text="Settings" Placement="Placement.Right">
+            <MudIconButton Icon="@Icons.Material.Filled.Settings" 
+                           Style="color: #637A68;" />
+        </MudTooltip>
+        <MudTooltip Text="Log out" Placement="Placement.Right">
+            <MudIconButton Icon="@Icons.Material.Filled.Logout" 
+                           Style="color: #637A68;" 
+                           OnClick="HandleLogout" />
+        </MudTooltip>
+        <MudAvatar Color="Color.Dark" Class="mt-4">
+            <MudIcon Icon="@Icons.Material.Filled.Person" />
+        </MudAvatar>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-grow-1 px-10 py-10" style="overflow-y: auto; height: 100vh;">
+        @Body
+    </div>
+</div>
 
 @code {
-    bool _drawerOpen = true;
-
-    void DrawerToggle()
-    {
-        _drawerOpen = !_drawerOpen;
-    }
-
     private MudTheme _currentTheme = new MudTheme()
     {
         PaletteLight = new PaletteLight()
         {
-            Primary = "#4f46e5", // Indigo/Blue premium color
-            AppbarBackground = "#ffffff",
-            Background = "#f8fafc",
-            DrawerBackground = "#ffffff",
-            TextPrimary = "#1e293b",
-            TextSecondary = "#64748b",
-            ActionDefault = "#94a3b8",
-            ActionDisabled = "#cbd5e1"
+            Primary = "#1c1c1c",
+            Secondary = "#637A68",
+            Background = "#EFECE5",
+            Surface = "#ffffff",
+            TextPrimary = "#1c1c1c",
+            TextSecondary = "#6b7280",
         }
     };
+
+    private string _currentUri = "/";
+
+    protected override void OnInitialized()
+    {
+        _currentUri = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        NavigationManager.LocationChanged += (_, e) =>
+        {
+            _currentUri = NavigationManager.ToBaseRelativePath(e.Location);
+            StateHasChanged();
+        };
+    }
+
+    private void NavigateTo(string path)
+    {
+        NavigationManager.NavigateTo(path);
+    }
+
+    private string GetSidebarStyle(string path)
+    {
+        var relativePath = "/" + _currentUri;
+        bool isActive = relativePath == path || (path != "/" && relativePath.StartsWith(path));
+        if (path == "/" && relativePath == "/") isActive = true;
+        
+        return isActive 
+            ? "color: white; background-color: #637A68; border-radius: 12px; margin: 4px 0;" 
+            : "color: #637A68; margin: 4px 0;";
+    }
+
+    private async Task HandleLogout()
+    {
+        await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "jwt_token");
+        await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "user_email");
+        await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "user_name");
+        ((CustomAuthStateProvider)AuthStateProvider).NotifyUserLogout();
+        Snackbar.Add("You have been logged out.", Severity.Info);
+        NavigationManager.NavigateTo("/login", forceLoad: true);
+    }
 }

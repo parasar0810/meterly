@@ -1,0 +1,173 @@
+@using System.ComponentModel.DataAnnotations
+@inject HttpClient Http
+
+<MudDialog>
+    <DialogContent>
+        <EditForm Model="@_model" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
+            
+            <div class="d-flex flex-column gap-4">
+                <MudSelect T="Guid" @bind-Value="_model.CustomerId" Label="Customer" For="@(() => _model.CustomerId)" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    @if (_customers != null)
+                    {
+                        @foreach (var customer in _customers)
+                        {
+                            <MudSelectItem Value="@customer.Id">@customer.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+                
+                <MudDatePicker @bind-Date="_model.DueDate" Label="Due Date" For="@(() => _model.DueDate)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                
+                <MudTextField @bind-Value="_model.Currency" Label="Currency (e.g. USD)" For="@(() => _model.Currency)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+
+                <!-- Simple Line Items Input -->
+                <MudText Typo="Typo.subtitle2" Class="mt-2">Line Items</MudText>
+                
+                <div class="d-flex gap-2">
+                    <MudTextField @bind-Value="_newLineItem.Description" Label="Description" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    <MudNumericField @bind-Value="_newLineItem.Quantity" Label="Qty" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 80px;" />
+                    <MudNumericField @bind-Value="_newLineItem.UnitAmount" Label="Amount" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 100px;" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="AddLineItem" />
+                </div>
+                
+                @if (_model.LineItems.Any())
+                {
+                    <MudTable Items="@_model.LineItems" Dense="true" Elevation="0" Class="mt-2">
+                        <HeaderContent>
+                            <MudTh>Description</MudTh>
+                            <MudTh>Qty</MudTh>
+                            <MudTh>Amount</MudTh>
+                        </HeaderContent>
+                        <RowTemplate Context="lineItem">
+                            <MudTd DataLabel="Description">@lineItem.Description</MudTd>
+                            <MudTd DataLabel="Qty">@lineItem.Quantity</MudTd>
+                            <MudTd DataLabel="Amount">@lineItem.UnitAmount</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </div>
+            
+            <div class="d-flex justify-end gap-2 mt-6">
+                <MudButton OnClick="Cancel" Color="Color.Default">Cancel</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Color="Color.Primary" Variant="Variant.Filled" Disabled="@_isLoading">
+                    @if (_isLoading)
+                    {
+                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                        <MudText Class="ms-2">Saving...</MudText>
+                    }
+                    else
+                    {
+                        <MudText>Create Invoice</MudText>
+                    }
+                </MudButton>
+            </div>
+        </EditForm>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private InvoiceModel _model = new() { DueDate = DateTime.Today.AddDays(30) };
+    private LineItemModel _newLineItem = new();
+    private List<CustomerDto> _customers = new();
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Ideally we'd fetch customers here, but since we don't have a GET /customers endpoint yet, 
+        // we'll leave it empty for the mockup.
+        _customers.Add(new CustomerDto { Id = Guid.NewGuid(), Name = "Demo Customer" });
+    }
+
+    private void AddLineItem()
+    {
+        if (!string.IsNullOrWhiteSpace(_newLineItem.Description) && _newLineItem.Quantity > 0 && _newLineItem.UnitAmount >= 0)
+        {
+            _model.LineItems.Add(new LineItemModel
+            {
+                Description = _newLineItem.Description,
+                Quantity = _newLineItem.Quantity,
+                UnitAmount = _newLineItem.UnitAmount
+            });
+            _newLineItem = new LineItemModel();
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (!_model.LineItems.Any())
+        {
+            // Must have at least one line item
+            return;
+        }
+        
+        _isLoading = true;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("/api/invoices", new
+            {
+                CustomerId = _model.CustomerId,
+                Currency = _model.Currency,
+                DueDate = _model.DueDate?.ToUniversalTime(),
+                LineItems = _model.LineItems
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                var id = await response.Content.ReadFromJsonAsync<Guid>();
+                MudDialog.Close(DialogResult.Ok(new Pages.Invoices.InvoiceViewModel
+                {
+                    Id = id,
+                    CustomerName = "Demo Customer",
+                    Amount = _model.LineItems.Sum(l => l.Quantity * l.UnitAmount),
+                    Status = "Draft",
+                    DueDate = _model.DueDate ?? DateTime.Today.AddDays(30)
+                }));
+            }
+            else
+            {
+                MudDialog.Cancel();
+            }
+        }
+        catch
+        {
+            MudDialog.Cancel();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public class CustomerDto
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+    }
+
+    public class InvoiceModel
+    {
+        [Required]
+        public Guid CustomerId { get; set; }
+        
+        [Required]
+        public DateTime? DueDate { get; set; }
+        
+        [Required]
+        [StringLength(3, MinimumLength = 3)]
+        public string Currency { get; set; } = "USD";
+        
+        public List<LineItemModel> LineItems { get; set; } = new();
+    }
+    
+    public class LineItemModel
+    {
+        public string Description { get; set; } = "";
+        public int Quantity { get; set; } = 1;
+        public decimal UnitAmount { get; set; }
+    }
+}

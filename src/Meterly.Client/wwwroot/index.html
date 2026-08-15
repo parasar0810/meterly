@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Meterly.Client</title>
+    <title>Meterly — SaaS Billing Platform</title>
     <base href="/" />
     <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
     <link rel="stylesheet" href="css/app.css" />
@@ -13,6 +13,10 @@
     <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
     <link rel="icon" type="image/png" href="favicon.png" />
+    <!-- PWA manifest — enables "Install App" prompt and standalone window mode -->
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#1565C0" />
+    <meta name="description" content="Meterly — multi-tenant SaaS billing, invoicing and subscription management." />
 </head>
 
 <body>
@@ -31,6 +35,13 @@
     </div>
     <script src="_framework/blazor.webassembly.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+
+    <!-- PWA: register the service worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('service-worker.js');
+        }
+    </script>
 </body>
 
 </html>

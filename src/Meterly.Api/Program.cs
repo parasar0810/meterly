@@ -27,11 +27,34 @@ builder.Services.AddApplication();
 // Our infrastructure layer: EF Core + PostgreSQL + Auth Services
 builder.Services.AddInfrastructure(builder.Configuration);
 
+// ── CORS ─────────────────────────────────────────────────────────────────────
+// The Blazor WebAssembly frontend runs on a different origin (port 3000 / 5000)
+// than the API (port 8080 / 5000). Browsers enforce the Same-Origin Policy, so
+// we must explicitly allow the frontend's origin to call our API.
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("MeterlyFrontend", policy =>
+    {
+        policy
+            // Allow the Blazor dev server and the Docker-served client
+            .WithOrigins(
+                "http://localhost:3000",   // docker-compose client
+                "http://localhost:5000",   // dotnet run (Blazor dev)
+                "https://localhost:5001",  // dotnet run (Blazor dev HTTPS)
+                "http://localhost:5278",   // dotnet run (Blazor dev alternative port)
+                "http://localhost:8080"    // direct API access via browser
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
 // Add JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var secret = builder.Configuration["Jwt:Secret"] 
+        var jwtSection = builder.Configuration.GetSection("Jwt");
+        var secret = jwtSection["Secret"] 
                      ?? throw new InvalidOperationException("JWT Secret is not configured.");
         
         options.TokenValidationParameters = new TokenValidationParameters
@@ -40,8 +63,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = "Meterly",
-            ValidAudience = "MeterlyClient",
+            ValidIssuer   = jwtSection["Issuer"]   ?? "Meterly",
+            ValidAudience = jwtSection["Audience"]  ?? "MeterlyClients",
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret))
         };
     });
@@ -101,17 +124,19 @@ var app = builder.Build();
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-if (app.Environment.IsDevelopment())
+// Swagger is enabled in all environments so Docker deployments and demos work.
+// In a real production SaaS you would gate this behind authentication/IP allowlist.
+app.UseSwagger();
+app.UseSwaggerUI(options =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(options =>
-    {
-        options.SwaggerEndpoint("/swagger/v1/swagger.json", "Meterly API v1");
-        options.RoutePrefix = "swagger"; 
-    });
-}
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Meterly API v1");
+    options.RoutePrefix = "swagger"; 
+});
 
 app.UseHttpsRedirection();
+
+// CORS must come BEFORE Authentication and MapControllers
+app.UseCors("MeterlyFrontend");
 
 // Authentication + Authorization middleware
 app.UseAuthentication();

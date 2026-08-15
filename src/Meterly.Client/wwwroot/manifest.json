@@ -1,0 +1,23 @@
+{
+  "name": "Meterly — SaaS Billing Platform",
+  "short_name": "Meterly",
+  "description": "Multi-tenant SaaS billing, invoicing and subscription management.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#1565C0",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "favicon.png",
+      "type": "image/png",
+      "sizes": "48x48"
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+@using System.ComponentModel.DataAnnotations
+@inject HttpClient Http
+
+<MudDialog>
+    <DialogContent>
+        <EditForm Model="@_model" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
+            <div class="d-flex flex-column gap-4">
+                <MudTextField @bind-Value="_model.Name" Label="Full Name" For="@(() => _model.Name)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                <MudTextField @bind-Value="_model.Email" Label="Email Address" For="@(() => _model.Email)" Variant="Variant.Outlined" Margin="Margin.Dense" InputType="InputType.Email" />
+            </div>
+            
+            <div class="d-flex justify-end gap-2 mt-6">
+                <MudButton OnClick="Cancel" Color="Color.Default">Cancel</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Color="Color.Primary" Variant="Variant.Filled" Disabled="@_isLoading">
+                    @if (_isLoading)
+                    {
+                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                        <MudText Class="ms-2">Saving...</MudText>
+                    }
+                    else
+                    {
+                        <MudText>Save</MudText>
+                    }
+                </MudButton>
+            </div>
+        </EditForm>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private CustomerModel _model = new();
+    private bool _isLoading;
+
+    private async Task Submit()
+    {
+        _isLoading = true;
+        try
+        {
+            // Call API to create customer
+            var response = await Http.PostAsJsonAsync("/api/customers", new
+            {
+                Name = _model.Name,
+                Email = _model.Email
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                var id = await response.Content.ReadFromJsonAsync<Guid>();
+                MudDialog.Close(DialogResult.Ok(new Pages.Customers.CustomerViewModel
+                {
+                    Id = id,
+                    Name = _model.Name,
+                    Email = _model.Email,
+                    CreatedAt = DateTime.UtcNow
+                }));
+            }
+            else
+            {
+                // In a real app, handle error
+                MudDialog.Cancel();
+            }
+        }
+        catch
+        {
+            MudDialog.Cancel();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public class CustomerModel
+    {
+        [Required]
+        public string Name { get; set; } = string.Empty;
+
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = string.Empty;
+    }
+}

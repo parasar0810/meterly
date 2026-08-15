@@ -1,0 +1,130 @@
+@page "/customers"
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Customers - Meterly</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-6">
+    <div>
+        <MudText Typo="Typo.h4" Style="font-weight: 700; color: #1c1c1c;">Customers</MudText>
+        <MudText Typo="Typo.body2" Style="color: #6b7280;">Manage your customer accounts</MudText>
+    </div>
+    <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PersonAdd"
+               Style="background-color: #637A68; color: white; border-radius: 8px; text-transform: none;"
+               OnClick="OpenAddCustomerDialog">
+        Add Customer
+    </MudButton>
+</div>
+
+@if (_isLoading)
+{
+    <div class="d-flex justify-center py-12">
+        <MudProgressCircular Indeterminate="true" Color="Color.Secondary" />
+    </div>
+}
+else if (_customers.Count == 0)
+{
+    <MudPaper Elevation="0" Class="premium-card d-flex flex-column align-center justify-center py-12">
+        <MudIcon Icon="@Icons.Material.Filled.PeopleOutline" Style="font-size: 80px; color: #ccc;" Class="mb-4" />
+        <MudText Typo="Typo.h6" Style="color: #6b7280;">No customers yet</MudText>
+        <MudText Typo="Typo.body2" Style="color: #aaa;" Class="mb-4">Add your first customer to get started.</MudText>
+        <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PersonAdd"
+                   Style="background-color: #637A68; color: white; border-radius: 8px; text-transform: none;"
+                   OnClick="OpenAddCustomerDialog">
+            Add First Customer
+        </MudButton>
+    </MudPaper>
+}
+else
+{
+    <MudPaper Elevation="0" Class="premium-card">
+        <MudTable Items="@_customers" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Email</MudTh>
+                <MudTh>Created</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Email">@context.Email</MudTd>
+                <MudTd DataLabel="Created">@context.CreatedAt.ToString("MMM dd, yyyy")</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" 
+                                   OnClick="@(() => ViewCustomer(context.Id))" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private bool _isLoading = true;
+    private List<CustomerViewModel> _customers = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            NavigationManager.NavigateTo("/login");
+            return;
+        }
+
+        await SetAuthHeader();
+        await LoadCustomers();
+    }
+
+    private async Task SetAuthHeader()
+    {
+        var token = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "jwt_token");
+        if (!string.IsNullOrEmpty(token))
+        {
+            Http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        }
+    }
+
+    private async Task LoadCustomers()
+    {
+        _isLoading = true;
+        try
+        {
+            // The API doesn't have a list endpoint yet, so we start empty
+            // Customers will appear as they are created through this page
+        }
+        catch { }
+        _isLoading = false;
+    }
+
+    private async Task OpenAddCustomerDialog()
+    {
+        var parameters = new DialogParameters();
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AddCustomerDialog>("Add Customer", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is CustomerViewModel newCustomer)
+        {
+            _customers.Add(newCustomer);
+            Snackbar.Add($"Customer '{newCustomer.Name}' created!", Severity.Success);
+        }
+    }
+
+    private void ViewCustomer(Guid id)
+    {
+        Snackbar.Add("Customer details view coming soon!", Severity.Info);
+    }
+
+    public class CustomerViewModel
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Email { get; set; } = "";
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
+}

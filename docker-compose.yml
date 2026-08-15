@@ -1,17 +1,75 @@
 
+# =============================================================
+# Meterly — Docker Compose
+#
+# Services:
+#   db     — PostgreSQL 16 database
+#   api    — Meterly.Api (.NET 8 ASP.NET Core)
+#   client — Meterly.Client (Blazor WASM served by Nginx)
+#
+# Usage:
+#   docker-compose up --build -d   # build images and start all services
+#   docker-compose logs -f api     # stream API logs
+#   docker-compose down -v         # stop and remove volumes
+# =============================================================
+
 services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     container_name: meterly_postgres
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: meterly_user
       POSTGRES_PASSWORD: meterly_password
       POSTGRES_DB: meterly_db
     ports:
-      - "5434:5432"
+      - "5434:5432"          # expose to host for local tooling (pgAdmin, etc.)
     volumes:
       - meterly_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U meterly_user -d meterly_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Meterly.Api ────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .                               # repo root is the build context
+      dockerfile: src/Meterly.Api/Dockerfile
+    container_name: meterly_api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Override the blank placeholders from appsettings.json.
+      # ASP.NET Core maps double-underscore (__) to colon (:) in config keys.
+      ConnectionStrings__DefaultConnection: >-
+        Host=db;Port=5432;Database=meterly_db;
+        Username=meterly_user;Password=meterly_password;
+        Include Error Detail=true
+      Jwt__Secret: "CHANGE_ME_IN_PRODUCTION_must_be_32_chars_min!!"
+      Jwt__Issuer: "Meterly"
+      Jwt__Audience: "MeterlyClients"
+      Jwt__ExpiryMinutes: "60"
+      ASPNETCORE_ENVIRONMENT: "Production"
+    depends_on:
+      db:
+        condition: service_healthy   # wait for postgres to be ready before starting
+
+  # ── Meterly.Client (Blazor WASM + Nginx) ──────────────────────────────────────
+  client:
+    build:
+      context: .                               # repo root is the build context
+      dockerfile: src/Meterly.Client/Dockerfile
+    container_name: meterly_client
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
 
 volumes:
   meterly_pgdata:
