@@ -1,159 +1,220 @@
-# Meterly — Multi-Tenant SaaS Billing & Subscription Platform
+﻿# Meterly - Multi-Tenant SaaS Billing and Subscription Platform
 
-A realistic multi-tenant billing platform built with ASP.NET Core, Entity Framework Core, and PostgreSQL. Inspired by Stripe Billing and Chargebee.
+> A production-grade, multi-tenant SaaS billing platform built with ASP.NET Core, Blazor WebAssembly, Entity Framework Core, and PostgreSQL. Inspired by Stripe Billing and Chargebee.
 
 ## Tech Stack
 
 | Technology | Purpose |
 |---|---|
-| C# / .NET 8 | Backend language and runtime |
-| ASP.NET Core | Web API framework |
-| Entity Framework Core | ORM (Object-Relational Mapper) |
-| PostgreSQL | Database |
-| MediatR | Command/query handling (CQRS-lite) |
-| FluentValidation | Input validation |
-| JWT | Authentication |
-| Hangfire | Background job processing |
-| Docker | Containerized development |
-| xUnit | Testing |
-| Swagger | API documentation |
+| **C# / .NET 8** | Language and runtime |
+| **ASP.NET Core 8** | Web API backend |
+| **Blazor WebAssembly** | SPA frontend (compiled C# to WASM) |
+| **MudBlazor** | UI component library |
+| **Entity Framework Core** | ORM with PostgreSQL |
+| **PostgreSQL** | Primary database |
+| **MediatR** | CQRS command/query handling |
+| **FluentValidation** | Input validation pipelines |
+| **JWT Bearer** | Authentication and multi-tenancy |
+| **Hangfire** | Persistent background jobs (dunning) |
+| **Docker** | Containerised development |
+| **xUnit** | Unit and integration testing |
+| **Swagger / OpenAPI** | API documentation |
+| **PWA** | Installable as a Windows/Mac desktop app |
+
+---
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    classDef client fill:#1565C0,stroke:#0D47A1,stroke-width:2px,color:#fff
+    classDef api fill:#2E7D32,stroke:#1B5E20,stroke-width:2px,color:#fff
+    classDef app fill:#E65100,stroke:#BF360C,stroke-width:2px,color:#fff
+    classDef domain fill:#6A1B9A,stroke:#4A148C,stroke-width:2px,color:#fff
+    classDef infra fill:#455A64,stroke:#263238,stroke-width:2px,color:#fff
+    classDef db fill:#00838F,stroke:#006064,stroke-width:2px,color:#fff
+    classDef external fill:#4E342E,stroke:#3E2723,stroke-width:2px,color:#fff,stroke-dasharray:5 5
+
+    User((Tenant / Admin)) --> Browser
+
+    subgraph Frontend [Blazor WebAssembly Frontend - port 5278]
+        Browser[Browser WASM Runtime]
+        subgraph Meterly_Client [Meterly.Client]
+            UI[MudBlazor UI Components]
+            Pages[Pages - Dashboard, Invoices, Customers, Products, Auth]
+            AuthProv[Custom AuthStateProvider]
+            Http[HttpClient - Bearer token per request]
+            UI --> Pages
+            Pages --> AuthProv
+            Pages --> Http
+            AuthProv --> LocalStorage[(localStorage JWT)]
+        end
+        Browser -.-> Meterly_Client
+    end
+
+    subgraph BackendAPI [Presentation Layer]
+        subgraph Meterly_Api [Meterly.Api - port 8080]
+            Middleware[ExceptionHandlingMiddleware and CORS]
+            Security[JWT Bearer Authentication]
+            Controllers[Controllers - Auth, Invoices, Customers, Products, Health]
+            Middleware --> Security
+            Security --> Controllers
+        end
+    end
+
+    subgraph ApplicationCore [Core Business Logic]
+        subgraph Meterly_Application [Meterly.Application]
+            Validation[FluentValidation Pipelines]
+            CQRS[MediatR Commands and Queries]
+            Ports[Interfaces - IMeterlyDbContext, ITokenGenerator, IPaymentGateway, IWebhookDispatcher]
+            Validation --> CQRS
+            CQRS --> Ports
+        end
+        subgraph Meterly_Domain [Meterly.Domain]
+            Entities[Entities - Tenant, User, Invoice, Product, Subscription, Payment, LedgerEntry]
+            Enums[Enums - InvoiceStatus, BillingCycle, Currency]
+            Exceptions[Domain Exceptions]
+            Entities -.-> Enums
+        end
+        Meterly_Application --> Meterly_Domain
+    end
+
+    subgraph InfraLayer [Infrastructure and Integrations]
+        subgraph Meterly_Infrastructure [Meterly.Infrastructure]
+            EFCore[EF Core DbContext - PostgreSQL]
+            JwtGen[JwtTokenGenerator]
+            LedgerSvc[LedgerService - Double-entry accounting]
+            PayGW[MockPaymentGateway]
+            WebhookDisp[HttpWebhookDispatcher]
+            DunningJob[DunningJob via Hangfire - hourly sweep]
+        end
+    end
+
+    subgraph ExternalSystems [External Services]
+        Database[(PostgreSQL Database)]
+        PaymentGateway{{Mock Payment Gateway}}
+        Webhooks[(Tenant Webhook Endpoints)]
+    end
+
+    Http        -- REST/JSON         --> Middleware
+    Controllers -- IMediator.Send()  --> Validation
+    Ports       -. Implemented by .-> EFCore
+    Ports       -. Implemented by .-> JwtGen
+    Ports       -. Implemented by .-> PayGW
+    Ports       -. Implemented by .-> WebhookDisp
+    Ports       -. Implemented by .-> LedgerSvc
+    EFCore      -- Read/Write        --> Database
+    DunningJob  -- Job state         --> Database
+    PayGW       -- Process charge    --> PaymentGateway
+    WebhookDisp -- HTTP POST event   --> Webhooks
+
+    class Meterly_Client client
+    class Meterly_Api api
+    class Meterly_Application app
+    class Meterly_Domain domain
+    class Meterly_Infrastructure infra
+    class Database db
+    class PaymentGateway external
+    class Webhooks external
 ```
+
+> See [ARCHITECTURE.md](./ARCHITECTURE.md) for full diagram with detailed layer descriptions.
+
+---
+
+## Project Structure
+
+`
 src/
-├── Meterly.Domain           → Entities, enums, business rules (zero dependencies)
-├── Meterly.Application      → Services, DTOs, validators, use cases
-├── Meterly.Infrastructure   → EF Core, PostgreSQL, external services
-└── Meterly.Api              → Controllers, middleware, configuration
+├── Meterly.Domain           → Entities, enums, domain exceptions (zero dependencies)
+├── Meterly.Application      → MediatR commands/queries, validators, interfaces
+├── Meterly.Infrastructure   → EF Core, PostgreSQL, JWT, Hangfire, adapters
+├── Meterly.Api              → Controllers, middleware, Swagger, CORS
+└── Meterly.Client           → Blazor WebAssembly SPA (MudBlazor UI + PWA)
 
 tests/
-├── Meterly.UnitTests        → Business logic tests
-└── Meterly.IntegrationTests → API endpoint tests
-```
+├── Meterly.UnitTests        → Pure business logic tests
+└── Meterly.IntegrationTests → Full HTTP pipeline tests (in-memory DB)
+`
+
+---
 
 ## Quick Start
 
 ### Prerequisites
-
 - [.NET 8 SDK](https://dotnet.microsoft.com/download)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
 ### 1. Start the Database
 
-```bash
+`ash
 docker-compose up -d
-```
+`
 
-This starts PostgreSQL on `localhost:5432` with:
-- Database: `meterly_db`
-- Username: `meterly_user`
-- Password: `meterly_password`
+Starts PostgreSQL on localhost:5432 with database meterly_db, user meterly_user, password meterly_password.
 
-### 2. Run the Application
+### 2. Run the Backend API
 
-```bash
-dotnet run --project src/Meterly.Api
-```
+`ash
+dotnet run --project src/Meterly.Api --urls "http://localhost:8080"
+`
 
-The API starts at:
-- **HTTP:** http://localhost:5000
-- **Swagger:** http://localhost:5000/swagger
+- API: http://localhost:8080
+- Swagger UI: http://localhost:8080/swagger
+- Hangfire Dashboard: http://localhost:8080/hangfire
 
-### 3. Run Tests
+### 3. Run the Frontend
 
-```bash
+`ash
+dotnet run --project src/Meterly.Client
+`
+
+- App: http://localhost:5278
+
+### 4. Run in Visual Studio
+
+1. Open Meterly.sln
+2. Right-click the Solution → Configure Startup Projects → Multiple startup projects
+3. Set Meterly.Api to Start and Meterly.Client to Start
+4. Press Ctrl+F5
+
+### 5. Run Tests
+
+`ash
 dotnet test
-```
+`
 
-### 4. Verify It Works
+---
 
-```bash
-# Health check
-curl http://localhost:5000/api/health
+## Core Billing Flow
 
-# Test error handling
-curl http://localhost:5000/api/health/error-test?type=notfound
-```
+`
+Tenant registers → Creates Customers → Sets up Products/Plans
+→ Creates Subscriptions → Generates Invoices → Processes Payments
+→ Ledger entries written → Webhooks dispatched → Dunning on failure
+`
+
+---
 
 ## Development Phases
 
-- [x] **Phase 1:** Project setup + architecture
-- [ ] **Phase 2:** PostgreSQL + EF Core + migrations
-- [ ] **Phase 3:** Authentication + multi-tenancy
-- [ ] **Phase 4:** Customers
-- [ ] **Phase 5:** Plans + subscriptions
-- [ ] **Phase 6:** Usage metering
-- [ ] **Phase 7:** Invoice generation
-- [ ] **Phase 8:** Mock payments
-- [ ] **Phase 9:** Idempotency + webhooks
-- [ ] **Phase 10:** Double-entry ledger
-- [ ] **Phase 11:** Refunds + credits
+- [x] **Phase 1:** Project setup + Clean Architecture
+- [x] **Phase 2:** PostgreSQL + EF Core + migrations
+- [x] **Phase 3:** Authentication + multi-tenancy (JWT)
+- [x] **Phase 4:** Customers
+- [x] **Phase 5:** Plans + subscriptions
+- [x] **Phase 6:** Usage metering
+- [x] **Phase 7:** Invoice generation
+- [x] **Phase 8:** Mock payments
+- [x] **Phase 9:** Idempotency + webhooks
+- [x] **Phase 10:** Double-entry ledger
+- [x] **Phase 11:** Refunds + credits
 - [x] **Phase 12:** Dunning + Hangfire
-- [x] **Phase 13:** Testing
-- [ ] **Phase 14:** Docker
-- [ ] **Phase 15:** Documentation + cleanup
+- [x] **Phase 13:** Testing (unit + integration)
+- [x] **Phase 14:** Docker
+- [x] **Phase 15:** Blazor WebAssembly frontend (PWA) + Documentation
 
-## Core Flow
-
-```
-Tenant → Customer → Subscription → Usage → Invoice → Payment → Ledger
-```
-
-## Interview Questions From This Project
-
-<details>
-<summary>Phase 1: Project Setup & Architecture</summary>
-
-**Q: Why Clean Architecture?**
-A: Separates business logic from infrastructure. I can test billing calculations without a database.
-
-**Q: Why a modular monolith instead of microservices?**
-A: Microservices add network complexity, distributed transactions, and deployment overhead. A monolith with clean boundaries is simpler to build, test, and deploy — and can be split later if needed.
-
-**Q: Why PostgreSQL?**
-A: Open-source, production-grade, excellent concurrency (MVCC), strong JSON support. Free to run anywhere.
-
-**Q: What is Dependency Injection?**
-A: Instead of a class creating its own dependencies (`new DatabaseService()`), they're passed in from outside. This makes code testable and swappable.
-
-**Q: Why a global exception handler?**
-A: Every API should return consistent error formats. Without one, unhandled exceptions leak stack traces — a security risk and poor UX.
-
-**Q: Why DTOs instead of exposing entities?**
-A: Entities contain database concerns. DTOs are shaped for the API consumer. Changing the database schema shouldn't break the API contract.
-
-**Q: How do you secure webhooks so attackers can't spoof them?**
-A: We use HMAC-SHA256. When a webhook is registered, we generate a cryptographically secure random secret. When dispatching, we compute an HMAC hash of the JSON payload using that secret and send it in the `Meterly-Signature` header. The receiver computes the same hash; if they don't match, the request was spoofed or tampered with in transit.
-
-**Q: Why use double-entry accounting instead of just an 'AmountPaid' column?**
-A: Double-entry accounting ensures mathematical correctness. Every transaction has two sides (Debit and Credit) that must sum to zero. If they don't, you have a bug. It provides a reliable, immutable audit trail for complex scenarios like partial refunds, chargebacks, and revenue recognition.
-
-**Q: How do you handle a payment failure without losing the customer?**
-A: Dunning — a scheduled retry system. When a payment fails, we record the failure, mark the subscription PastDue, and retry on a schedule (1 day, 3 days, 7 days). Each attempt is recorded in `DunningAttempts` for a full audit trail. If all retries fail, the subscription is Suspended, not deleted — the customer can still resolve it by updating their card.
-
-**Q: Why Hangfire instead of a hosted IHostedService?**
-A: Hangfire persists job state to PostgreSQL. If the server crashes mid-dunning sweep, the job is not lost — Hangfire marks it as failed and will retry it. A `BackgroundService` running a timer has no persistence; a crash means jobs are lost silently.
-
-**Q: What's the Hangfire dashboard useful for in production?**
-A: It shows all queued, processing, succeeded, and failed jobs in real-time. For billing, this is critical — if a dunning job fails (DB outage, gateway timeout), you can see exactly which invoice was affected, retry it manually, and see the full exception stack trace without tailing logs.
-
-**Q: Why does DunningJob use IServiceScopeFactory instead of injecting DbContext directly?**
-A: Hangfire creates jobs as singletons, but DbContext is Scoped (per request). Injecting Scoped into Singleton causes a captive dependency bug. IServiceScopeFactory lets us create a fresh scope per job execution, giving us a clean DbContext instance.
-
-**Q: Why bypass the global tenant query filter in DunningJob?**
-A: The global filter reads TenantId from ICurrentUserService, which reads from HttpContext. Hangfire jobs run outside HTTP requests — there's no HttpContext. We use `.IgnoreQueryFilters()` and handle tenant scoping manually by querying across all tenants in a single sweep.
-
-**Q: Why don't you use a real PostgreSQL database in the integration tests?**
-A: Requiring a real database makes tests flaky and hard to run in CI/CD environments. By replacing PostgreSQL with EF Core InMemory Database inside `WebApplicationFactory`, the tests run instantly entirely in memory, but still test the full ASP.NET Core request pipeline, middleware, MediatR, and controllers. We reserve real DB tests for end-to-end smoke tests.
-
-**Q: In your PayInvoice tests, why do you mock IPaymentGateway but not the database?**
-A: `IPaymentGateway` represents an external system boundary (e.g., Stripe) which we don't control. Calling it would cost real money and fail without network. The database, however, is controlled by our code. Using EF Core InMemory lets us verify that our EF queries and state changes work correctly without mocking every `DbSet`, which is an anti-pattern.
-
-**Q: How do you test the dunning schedule without a database or background jobs running?**
-A: We extracted the schedule logic into a pure domain function (`ShouldRetryNow`). Pure unit tests can pass in different mock `DateTime` values and attempt counts to verify the business rule (e.g., attempt 4 must wait 7 days) without needing Hangfire or SQL at all.
-
-</details>
+---
 
 ## License
 
