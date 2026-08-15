@@ -44,6 +44,8 @@ public class Invoice : BaseEntity, ISoftDeletable
 
     public ICollection<InvoiceLineItem> LineItems { get; set; } = new List<InvoiceLineItem>();
     public ICollection<Payment> Payments { get; set; } = new List<Payment>();
+    public ICollection<Refund> Refunds { get; set; } = new List<Refund>();
+    public ICollection<DunningAttempt> DunningAttempts { get; set; } = new List<DunningAttempt>();
 
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }

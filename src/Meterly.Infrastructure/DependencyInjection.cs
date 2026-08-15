@@ -1,4 +1,7 @@
+using Hangfire;
+using Hangfire.PostgreSql;
 using Meterly.Infrastructure.Data;
+using Meterly.Infrastructure.Jobs;
 using Meterly.Infrastructure.Services;
 using Meterly.Application.Common.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -73,6 +76,37 @@ public static class DependencyInjection
 
         // Register Webhook Dispatcher and its HttpClient
         services.AddHttpClient<IWebhookDispatcher, HttpWebhookDispatcher>();
+
+        // =====================================================================
+        // Phase 12: Hangfire — Background Job Processing
+        // =====================================================================
+        // Hangfire stores job state in PostgreSQL. It creates its own schema
+        // ("hangfire") with tables for queued jobs, failed jobs, schedules, etc.
+        // This is separate from our application tables — Hangfire manages its own migrations.
+        //
+        // WHY PostgreSqlStorage instead of InMemory?
+        // InMemory storage loses all jobs on restart. PostgreSQL storage is durable:
+        // if the server crashes mid-job, Hangfire will retry it on next boot.
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("DefaultConnection is required for Hangfire storage.");
+
+        services.AddHangfire(config => config
+            .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+            .UseSimpleAssemblyNameTypeSerializer()
+            .UseRecommendedSerializerSettings()
+            .UsePostgreSqlStorage(options =>
+                options.UseNpgsqlConnection(connectionString)));
+
+        // The Hangfire server processes jobs from the queue.
+        // worker count: 5 is sensible for a billing system (not too many parallel retries)
+        services.AddHangfireServer(options =>
+        {
+            options.WorkerCount = 5;
+            options.Queues = new[] { "dunning", "default" };
+        });
+
+        // Register DunningJob so Hangfire can resolve it via DI
+        services.AddScoped<DunningJob>();
 
         return services;
     }

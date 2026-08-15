@@ -20,4 +20,13 @@ public interface ILedgerService
         Invoice invoice,
         Payment payment,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Posts the double-entry pair for a refund.
+    /// Creates: Debit "Revenue" + Credit "Accounts Payable / Cash"
+    /// </summary>
+    Task PostRefundEntriesAsync(
+        Guid tenantId,
+        Refund refund,
+        CancellationToken cancellationToken);
 }

@@ -89,7 +89,7 @@ curl http://localhost:5000/api/health/error-test?type=notfound
 - [ ] **Phase 9:** Idempotency + webhooks
 - [ ] **Phase 10:** Double-entry ledger
 - [ ] **Phase 11:** Refunds + credits
-- [ ] **Phase 12:** Dunning + Hangfire
+- [x] **Phase 12:** Dunning + Hangfire
 - [ ] **Phase 13:** Testing
 - [ ] **Phase 14:** Docker
 - [ ] **Phase 15:** Documentation + cleanup
@@ -122,6 +122,27 @@ A: Every API should return consistent error formats. Without one, unhandled exce
 
 **Q: Why DTOs instead of exposing entities?**
 A: Entities contain database concerns. DTOs are shaped for the API consumer. Changing the database schema shouldn't break the API contract.
+
+**Q: How do you secure webhooks so attackers can't spoof them?**
+A: We use HMAC-SHA256. When a webhook is registered, we generate a cryptographically secure random secret. When dispatching, we compute an HMAC hash of the JSON payload using that secret and send it in the `Meterly-Signature` header. The receiver computes the same hash; if they don't match, the request was spoofed or tampered with in transit.
+
+**Q: Why use double-entry accounting instead of just an 'AmountPaid' column?**
+A: Double-entry accounting ensures mathematical correctness. Every transaction has two sides (Debit and Credit) that must sum to zero. If they don't, you have a bug. It provides a reliable, immutable audit trail for complex scenarios like partial refunds, chargebacks, and revenue recognition.
+
+**Q: How do you handle a payment failure without losing the customer?**
+A: Dunning — a scheduled retry system. When a payment fails, we record the failure, mark the subscription PastDue, and retry on a schedule (1 day, 3 days, 7 days). Each attempt is recorded in `DunningAttempts` for a full audit trail. If all retries fail, the subscription is Suspended, not deleted — the customer can still resolve it by updating their card.
+
+**Q: Why Hangfire instead of a hosted IHostedService?**
+A: Hangfire persists job state to PostgreSQL. If the server crashes mid-dunning sweep, the job is not lost — Hangfire marks it as failed and will retry it. A `BackgroundService` running a timer has no persistence; a crash means jobs are lost silently.
+
+**Q: What's the Hangfire dashboard useful for in production?**
+A: It shows all queued, processing, succeeded, and failed jobs in real-time. For billing, this is critical — if a dunning job fails (DB outage, gateway timeout), you can see exactly which invoice was affected, retry it manually, and see the full exception stack trace without tailing logs.
+
+**Q: Why does DunningJob use IServiceScopeFactory instead of injecting DbContext directly?**
+A: Hangfire creates jobs as singletons, but DbContext is Scoped (per request). Injecting Scoped into Singleton causes a captive dependency bug. IServiceScopeFactory lets us create a fresh scope per job execution, giving us a clean DbContext instance.
+
+**Q: Why bypass the global tenant query filter in DunningJob?**
+A: The global filter reads TenantId from ICurrentUserService, which reads from HttpContext. Hangfire jobs run outside HTTP requests — there's no HttpContext. We use `.IgnoreQueryFilters()` and handle tenant scoping manually by querying across all tenants in a single sweep.
 
 </details>
 

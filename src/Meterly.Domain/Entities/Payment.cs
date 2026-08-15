@@ -48,6 +48,8 @@ public class Payment : BaseEntity, ISoftDeletable
     /// </summary>
     public string? FailureReason { get; set; }
 
+    public ICollection<Refund> Refunds { get; set; } = new List<Refund>();
+
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
 }

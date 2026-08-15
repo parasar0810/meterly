@@ -32,19 +32,40 @@ public class InvoicesController : ControllerBase
 
     [HttpPost("invoices/{id:guid}/pay")]
     [ProducesResponseType(typeof(PayInvoiceResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> PayInvoice(
         Guid id,
         [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
         CancellationToken cancellationToken)
     {
+        var key = idempotencyKey ?? Guid.NewGuid().ToString("N");
         var command = new PayInvoiceCommand 
         { 
             InvoiceId = id,
-            IdempotencyKey = idempotencyKey 
+            IdempotencyKey = key 
         };
+        var result = await _sender.Send(command, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("invoices/{id:guid}/refund")]
+    [ProducesResponseType(typeof(Meterly.Application.Invoices.Commands.RefundInvoice.RefundInvoiceResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RefundInvoice(
+        Guid id,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        [FromBody] Meterly.Application.Invoices.Commands.RefundInvoice.RefundInvoiceCommand request,
+        CancellationToken cancellationToken)
+    {
+        // Enforce the ID from the route matches the payload
+        if (id != request.InvoiceId)
+            return BadRequest();
+
+        var key = idempotencyKey ?? Guid.NewGuid().ToString("N");
         
+        var command = request with { InvoiceId = id, IdempotencyKey = key };
         var result = await _sender.Send(command, cancellationToken);
         return Ok(result);
     }

@@ -33,4 +33,11 @@ public interface IPaymentGateway
         string currency,
         string idempotencyKey,
         CancellationToken cancellationToken = default);
+
+    Task<PaymentResult> RefundAsync(
+        string gatewayReference,
+        decimal amount,
+        string currency,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
 }

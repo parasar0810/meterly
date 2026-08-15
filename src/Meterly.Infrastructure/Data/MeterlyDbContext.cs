@@ -51,6 +51,8 @@ public class MeterlyDbContext : DbContext, IMeterlyDbContext
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
     public DbSet<LedgerEntry> LedgerEntries => Set<LedgerEntry>();
+    public DbSet<Refund> Refunds => Set<Refund>();
+    public DbSet<DunningAttempt> DunningAttempts => Set<DunningAttempt>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -105,6 +107,14 @@ public class MeterlyDbContext : DbContext, IMeterlyDbContext
         modelBuilder.Entity<LedgerEntry>().HasQueryFilter(l =>
             !l.IsDeleted &&
             (_currentUserService.TenantId == null || l.TenantId == _currentUserService.TenantId));
+
+        modelBuilder.Entity<Refund>().HasQueryFilter(r =>
+            !r.IsDeleted &&
+            (_currentUserService.TenantId == null || r.TenantId == _currentUserService.TenantId));
+
+        // DunningAttempts are scoped to tenant (no soft-delete — they're permanent audit records)
+        modelBuilder.Entity<DunningAttempt>().HasQueryFilter(d =>
+            _currentUserService.TenantId == null || d.TenantId == _currentUserService.TenantId);
     }
 
     /// <summary>

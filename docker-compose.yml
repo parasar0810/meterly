@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: meterly_password
       POSTGRES_DB: meterly_db
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - meterly_pgdata:/var/lib/postgresql/data
 

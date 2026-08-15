@@ -63,4 +63,37 @@ public class MockPaymentGateway : IPaymentGateway
 
         return Task.FromResult(result);
     }
+
+    public Task<PaymentResult> RefundAsync(
+        string gatewayReference,
+        decimal amount,
+        string currency,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        // 95% success rate for refunds
+        var isSuccess = _random.NextDouble() > 0.05;
+
+        PaymentResult result;
+
+        if (isSuccess)
+        {
+            var refundRef = $"mock_re_{Guid.NewGuid():N}";
+            result = new PaymentResult(
+                IsSuccess: true,
+                GatewayReference: refundRef,
+                FailureReason: null
+            );
+        }
+        else
+        {
+            result = new PaymentResult(
+                IsSuccess: false,
+                GatewayReference: null,
+                FailureReason: "refund_failed_processing_error"
+            );
+        }
+
+        return Task.FromResult(result);
+    }
 }

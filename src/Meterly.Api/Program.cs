@@ -1,7 +1,9 @@
 using Meterly.Application;
 using Meterly.Infrastructure;
 using Meterly.Api.Middleware;
+using Meterly.Infrastructure.Jobs;
 
+using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -117,6 +119,32 @@ app.UseAuthorization();
 
 // Routes requests to the appropriate controller action
 app.MapControllers();
+
+// ============================================================
+// Phase 12: Hangfire Dashboard + Recurring Jobs
+// ============================================================
+// The Hangfire Dashboard is a built-in web UI showing:
+//   - Queued, processing, succeeded, and failed jobs
+//   - Job history and retry counts
+//   - The recurring job schedule
+// In production you would restrict this behind authentication/authorization.
+// For development, we expose it at /hangfire freely.
+app.UseHangfireDashboard("/hangfire", new Hangfire.DashboardOptions
+{
+    DashboardTitle = "Meterly Job Dashboard",
+    // Allow all in Development; in production, restrict with IsDashboardAuthorizationFilter
+    Authorization = new[] { new Hangfire.Dashboard.LocalRequestsOnlyAuthorizationFilter() }
+});
+
+// Register recurring jobs after the app is built so DI is fully configured.
+// RecurringJob.AddOrUpdate is idempotent — calling it again just updates the schedule.
+RecurringJob.AddOrUpdate<DunningJob>(
+    recurringJobId: "dunning-sweep",
+    methodCall: job => job.RunAsync(CancellationToken.None),
+    // Run every hour — fine-grained enough for billing while not hammering the DB
+    // Format: "0 * * * *" = at minute 0 of every hour
+    cronExpression: Cron.Hourly(),
+    queue: "dunning");
 
 // Quick sanity check: log that the app is starting
 app.Logger.LogInformation("Meterly API starting in {Environment} environment",

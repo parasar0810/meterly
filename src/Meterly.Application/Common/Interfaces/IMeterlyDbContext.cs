@@ -20,6 +20,8 @@ public interface IMeterlyDbContext
     DbSet<Payment> Payments { get; }
     DbSet<WebhookEndpoint> WebhookEndpoints { get; }
     DbSet<LedgerEntry> LedgerEntries { get; }
+    DbSet<Refund> Refunds { get; }
+    DbSet<DunningAttempt> DunningAttempts { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
